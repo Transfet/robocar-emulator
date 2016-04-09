@@ -43,6 +43,7 @@
 #include <osmium/handler/node_locations_for_ways.hpp>
 #include <osmium/geom/haversine.hpp>
 #include <osmium/geom/coordinates.hpp>
+#include <google/protobuf/descriptor.h>
 #include <iostream>
 #include <map>
 #include <set>
@@ -69,8 +70,6 @@ typedef std::map<osmium::unsigned_object_id_type, WayNodesVect> Way2Nodes;
 typedef std::map<osmium::unsigned_object_id_type, WayNodesVect> AdjacencyList;
 typedef osmium::index::map::SparseMemMap<osmium::unsigned_object_id_type, int > Vertices;
 
-typedef std::map<osmium::unsigned_object_id_type, std::string> WayNames;
-
 class OSMReader : public osmium::handler::Handler
 {
 public:
@@ -79,14 +78,11 @@ public:
               AdjacencyList & palist,
               WaynodeLocations & waynode_locations,
               WayNodesMap & busWayNodesMap,
-              Way2Nodes & way2nodes,
-              WayNames & way2name
-            ) : alist ( alist ),
+              Way2Nodes & way2nodes ) : alist ( alist ),
     palist ( palist ),
     waynode_locations ( waynode_locations ),
     busWayNodesMap ( busWayNodesMap ),
-    way2nodes ( way2nodes ),
-    way2name ( way2name )
+    way2nodes ( way2nodes )
   {
 
     try
@@ -134,14 +130,12 @@ public:
         std::set<osmium::unsigned_object_id_type> sum_vertices;
         std::map<osmium::unsigned_object_id_type, size_t>  word_map;
         int sum_edges {0};
-        std::map <int, int> node_degrees;
         for ( auto busit = begin ( alist );
               busit != end ( alist ); ++busit )
           {
 
             sum_vertices.insert ( busit->first );
             sum_edges+=busit->second.size();
-            node_degrees[busit->second.size()]++;
 
             for ( const auto &v : busit->second )
               {
@@ -149,16 +143,10 @@ public:
               }
 
           }
-        std::cout << " #citymap edges = "<< sum_edges << std::endl;
+        std::cout << " #citymap edges = "<< sum_edges<< std::endl;
         std::cout << " #citymap vertices = "<< sum_vertices.size() << std::endl;
         std::cout << " #citymap vertices (deg- >= 1) = "<< alist.size() << std::endl;
-        std::cout << " #onewayc = "<< onewayc << std::endl;
-        std::cout << " #distribution of out degrees:" << std::endl;
-        std::cout << " #";
-        for ( const auto &i : node_degrees )
-          std::cout << "deg-=" << i.first << ":" << i.second << ", ";
-        std::cout << std::endl;
-        std::cout << " #mean of out degrees:" << ( double ) sum_edges / ( double ) alist.size() << std::endl;
+        std::cout << " #onewayc = "<< onewayc<< std::endl;
 
 #endif
 
@@ -199,23 +187,93 @@ public:
   int onewayc {0};
   int onewayf {false};
 
+  double getSpeed(osmium::Way& w)
+  {
+    const char* way = w.tags() ["highway"];
+    double speed;
+
+    if(!strcmp (way, "primary"))
+    {
+      speed = 7.0;   
+    }
+
+    if(!strcmp (way, "secondary"))
+    {
+      speed = 5.5;  
+    }   
+
+    if(!strcmp (way,"tertiary"))
+    {
+      speed = 5.5;  
+    }
+
+    if(!strcmp (way, "path"))
+    {
+      speed = 1.2;  
+    }
+
+    if(!strcmp (way, "residential"))
+    {
+      speed = 1.5;  
+    }
+
+    if(!strcmp (way, "track"))
+    {
+      speed = 1.2;  
+    }
+
+    if(!strcmp (way, "service"))
+    {
+      speed = 2.0;  
+    }
+
+    if(!strcmp (way, "unclassified"))
+    {
+      speed = 5.0;  
+    }         
+
+    if(!strcmp (way, "platform"))
+    {
+      speed = 0.5;  
+    }
+
+    if(!strcmp (way, "living_street"))
+    {
+      speed = 0.1;
+    }      
+
+    if(!strcmp (way, "primary_link"))
+    {
+      speed = 15.0;
+    }   
+
+    if(!strcmp (way, "secondary_link"))
+    {
+      speed = 15.0;
+    }   
+    return speed;
+  }
+
   void way ( osmium::Way& way )
   {
 
-    const char* highway = way.tags() ["highway"];
-    if ( !highway )
-      return;
-    // http://wiki.openstreetmap.org/wiki/Key:highway
-    if ( !strcmp ( highway, "footway" )
-         || !strcmp ( highway, "cycleway" )
+    const char* highway = way.tags() ["highway"];         
+    if ( !highway )                                     
+      return;                                             
+                                                          // http://wiki.openstreetmap.org/wiki/Key:highway
+    if ( !strcmp ( highway, "footway" )                   
+         || !strcmp ( highway, "cycleway" )               
          || !strcmp ( highway, "bridleway" )
          || !strcmp ( highway, "steps" )
-         || !strcmp ( highway, "path" )
+         || !strcmp ( highway, "pedestrian")
          || !strcmp ( highway, "construction" ) )
       return;
 
+    double speed = getSpeed(way);                         //inicializáljuk a sebességét az utaknak, amit egy külön függvényben
+  //  std::cout<<speed;                                   //írtunk meg,hogy melyik úthoz milyen sebesség tartozik.
+
     onewayf = false;
-    const char* oneway = way.tags() ["oneway"];
+    const char* oneway = way.tags() ["oneway"];           
     if ( oneway )
       {
         onewayf = true;
@@ -224,12 +282,6 @@ public:
 
     ++nOSM_ways;
 
-    const char* wayname = way.tags() ["name"];
-    if ( wayname )
-      way2name[way.id()] = wayname;
-    else
-      way2name[way.id()] = "UNS "+std::to_string ( way.id() );
-
     double way_length = osmium::geom::haversine::distance ( way.nodes() );
     sum_highhway_length += way_length;
 
@@ -237,12 +289,12 @@ public:
     int unique_node_counter {0};
     osmium::Location from_loc;
 
-    osmium::unsigned_object_id_type vertex_old;
+    osmium::unsigned_object_id_type vertex_old;     
 
     for ( const osmium::NodeRef& nr : way.nodes() )
       {
 
-        osmium::unsigned_object_id_type vertex = nr.positive_ref();
+        osmium::unsigned_object_id_type vertex = nr.positive_ref();   
 
         way2nodes[way.id()].push_back ( vertex );
 
@@ -264,17 +316,17 @@ public:
 
           }
 
-        if ( node_counter > 0 )
+        if ( node_counter > 0 )     
           {
 
-            if ( !edge ( vertex_old, vertex ) )
+            if ( !edge ( vertex_old, vertex ) )   
               {
 
                 alist[vertex_old].push_back ( vertex );
 
                 double edge_length = distance ( vertex_old, vertex );
 
-                palist[vertex_old].push_back ( edge_length / 3.0 );
+                palist[vertex_old].push_back ( edge_length / speed );
 
                 if ( edge_length>max_edge_length )
                   max_edge_length = edge_length;
@@ -299,7 +351,7 @@ public:
 
                     double edge_length = distance ( vertex_old, vertex );
 
-                    palist[vertex].push_back ( edge_length / 3.0 );
+                    palist[vertex].push_back ( edge_length / speed );
 
                     if ( edge_length>max_edge_length )
                       max_edge_length = edge_length;
@@ -404,7 +456,6 @@ private:
   WaynodeLocations & waynode_locations;
   WayNodesMap & busWayNodesMap;
   Way2Nodes & way2nodes;
-  WayNames & way2name;
 
 };
 

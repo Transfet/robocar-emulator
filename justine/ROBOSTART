@@ -1,0 +1,11 @@
+#!/bin/sh
+#ROBOSTART
+cd rcemu
+src/smartcity --osm=../Budapest.osm --city=Budapest --shm=BudapestSharedMemory --node2gps=../budapest-lmap.txt &
+sleep 10
+src/traffic --port=10007 --shm=BudapestSharedMemory &
+sleep 45
+cd ..
+cd rcwin
+java -jar target/site/justine-rcwin-0.0.16-jar-with-dependencies.jar ../budapest-lmap.txt &
+sleep 1

@@ -88,7 +88,7 @@ public:
     try
       {
 
-#ifdef DEBUG
+#ifdef DEBUG                                                       
         std::cout << "\n OSMReader is running... " << std::endl;
 #endif
 
@@ -187,71 +187,55 @@ public:
   int onewayc {0};
   int onewayf {false};
 
-  double getSpeed(osmium::Way& w)
+  double getNodeDistance(osmium::Way& w)
   {
     const char* way = w.tags() ["highway"];
-    double speed;
-
-    if(!strcmp (way, "primary"))
+    const char* maxspeed = w.tags() ["maxspeed"];
+    double nodeDistance;
+                                                                        // std::cout<<way<<std::endl;
+    if(!maxspeed)
     {
-      speed = 7.0;   
+    if(!strcmp (way, "primary")
+    || !strcmp (way, "secondary")
+    || !strcmp (way,"tertiary")
+    || !strcmp (way, "unclassified")
+    || !strcmp (way ,"road")
+    || !strcmp (way, "primary_link")  
+    || !strcmp (way, "secondary_link"))
+    {
+      maxspeed = "90";
     }
 
-    if(!strcmp (way, "secondary"))
+    if(!strcmp(way,"trunk")
+    || !strcmp(way,"trunk_link"))
     {
-      speed = 5.5;  
-    }   
-
-    if(!strcmp (way,"tertiary"))
-    {
-      speed = 5.5;  
+      maxspeed = "110";
     }
 
-    if(!strcmp (way, "path"))
+    if(!strcmp(way, "motorway"))
     {
-      speed = 1.2;  
+      maxspeed = "130";
     }
 
-    if(!strcmp (way, "residential"))
+    if(!strcmp (way, "residential")
+    || !strcmp (way, "track"))
     {
-      speed = 1.5;  
+      maxspeed = "50";
     }
-
-    if(!strcmp (way, "track"))
+    
+    if(!strcmp (way, "platform")
+    || !strcmp (way, "service")
+    || !strcmp (way, "path")
+    || !strcmp (way, "living_street"))
     {
-      speed = 1.2;  
+      maxspeed = "20";
     }
+       }
+       else
+        maxspeed = "30";
 
-    if(!strcmp (way, "service"))
-    {
-      speed = 2.0;  
-    }
-
-    if(!strcmp (way, "unclassified"))
-    {
-      speed = 5.0;  
-    }         
-
-    if(!strcmp (way, "platform"))
-    {
-      speed = 0.5;  
-    }
-
-    if(!strcmp (way, "living_street"))
-    {
-      speed = 0.1;
-    }      
-
-    if(!strcmp (way, "primary_link"))
-    {
-      speed = 15.0;
-    }   
-
-    if(!strcmp (way, "secondary_link"))
-    {
-      speed = 15.0;
-    }   
-    return speed;
+      nodeDistance = atoi(maxspeed) * 0.2 / 3.6;
+    return nodeDistance;
   }
 
   void way ( osmium::Way& way )
@@ -269,15 +253,15 @@ public:
          || !strcmp ( highway, "construction" ) )
       return;
 
-    double speed = getSpeed(way);                         //inicializáljuk a sebességét az utaknak, amit egy külön függvényben
+    double dist = getNodeDistance(way);                         //inicializáljuk a sebességét az utaknak, amit egy külön függvényben
   //  std::cout<<speed;                                   //írtunk meg,hogy melyik úthoz milyen sebesség tartozik.
 
     onewayf = false;
     const char* oneway = way.tags() ["oneway"];           
     if ( oneway )
       {
-        onewayf = true;
-        ++onewayc;
+        onewayf = true;                                   
+        ++onewayc;                                        //oneway counter
       }
 
     ++nOSM_ways;
@@ -294,25 +278,25 @@ public:
     for ( const osmium::NodeRef& nr : way.nodes() )
       {
 
-        osmium::unsigned_object_id_type vertex = nr.positive_ref();   
+        osmium::unsigned_object_id_type vertex = nr.positive_ref(); //Get absolute value of the reference ID of this NodeRef.   
 
-        way2nodes[way.id()].push_back ( vertex );
+        way2nodes[way.id()].push_back ( vertex );     //Get ID of this object with way.id() and push the actual vertex to their vector
 
         try
           {
 
-            vert.get ( vertex );
+            vert.get ( vertex );                //Retrieve value by id. Does not check for overflow or empty fields. 
 
           }
         catch ( std::exception& e )
           {
 
-            vert.set ( vertex, 1 );
+            vert.set ( vertex, 1 );         //Set the field with id to value. 
 
             ++unique_node_counter;
 
             //waynode_locations.set ( vertex, nr.location() );
-            waynode_locations[vertex] = nr.location();
+            waynode_locations[vertex] = nr.location();    //Get location of this NodeRef. 
 
           }
 
@@ -326,7 +310,7 @@ public:
 
                 double edge_length = distance ( vertex_old, vertex );
 
-                palist[vertex_old].push_back ( edge_length / speed );
+                palist[vertex_old].push_back ( edge_length / dist );
 
                 if ( edge_length>max_edge_length )
                   max_edge_length = edge_length;
@@ -347,11 +331,11 @@ public:
                 if ( !edge ( vertex, vertex_old ) )
                   {
 
-                    alist[vertex].push_back ( vertex_old );
+                    alist[vertex].push_back ( vertex_old );         //
 
                     double edge_length = distance ( vertex_old, vertex );
 
-                    palist[vertex].push_back ( edge_length / speed );
+                    palist[vertex].push_back ( edge_length / dist );
 
                     if ( edge_length>max_edge_length )
                       max_edge_length = edge_length;
@@ -443,12 +427,12 @@ private:
   inline double distance ( osmium::unsigned_object_id_type vertexa, osmium::unsigned_object_id_type vertexb )
   {
 
-    osmium::Location A = locations.get ( vertexa );
-    osmium::Location B = locations.get ( vertexb );
+    osmium::Location A = locations.get ( vertexa );     //Retrieve value by id.
+    osmium::Location B = locations.get ( vertexb );     //Retrieve value by id.
     osmium::geom::Coordinates ac {A};
     osmium::geom::Coordinates ab {B};
 
-    return osmium::geom::haversine::distance ( ac, ab );
+    return osmium::geom::haversine::distance ( ac, ab );    //Calculate distance in meters between two sets of coordinates. 
   }
 
   std::size_t m_estimator {0u};

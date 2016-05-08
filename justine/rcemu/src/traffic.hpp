@@ -192,8 +192,9 @@ public:
 
     std::cout << "The traffic simulation is over." << std::endl;
 
-    for ( auto c:m_cop_cars )
-      *logFile  << *c << std::endl;
+    //for ( auto c:m_cop_cars )
+    for(std::vector<std::shared_ptr<CopCar>>::iterator it = m_cop_cars.begin(); it != m_cop_cars.end(); it++)
+      *logFile  << (*(*it)) << std::endl;
 
     logFile->close ();
 
@@ -256,12 +257,12 @@ public:
              " " <<
              cars.size()
              << std::endl;
-
-    for ( auto car:cars )
+             //for(auto car:cars)
+    for ( std::vector<std::shared_ptr<Car>>::iterator it = cars.begin(); it != cars.end() ; it++)
       {
-        car->step();
+        (*(*it)).step();
 
-        *logFile << *car
+        *logFile << (*(*it))
                  <<  " " << std::endl;
 
       }
@@ -270,11 +271,12 @@ public:
   inline void pursuit ( void )
   {
 
-    for ( auto car1:m_cop_cars )
+    //for ( auto car1:m_cop_cars )
+      for(std::vector<std::shared_ptr<CopCar>>::iterator it = m_cop_cars.begin(); it != m_cop_cars.end(); it++)
       {
 
         double lon1 {0.0}, lat1 {0.0};
-        toGPS ( car1->from(), car1->to() , car1->get_step(), &lon1, &lat1 );
+        toGPS ( (*(*it)).from(), (*(*it)).to() , (*(*it)).get_step(), &lon1, &lat1 );
 
         double lon2 {0.0}, lat2 {0.0};
         for ( auto car:m_smart_cars )
@@ -289,7 +291,7 @@ public:
                 if ( d < m_catchdist )
                   {
 
-                    car1->captured_gangster();
+                    (*(*it)).captured_gangster();
                     car->set_type ( CarType::CAUGHT );
 
                   }
@@ -428,7 +430,7 @@ protected:
   boost::interprocess::managed_shared_memory *segment;
   boost::interprocess::offset_ptr<shm_map_Type> shm_map;
 
-  int m_delay {200};
+  int m_delay;
   bool m_run {true};
   double m_catchdist {15.5};
 

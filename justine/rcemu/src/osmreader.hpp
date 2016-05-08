@@ -70,6 +70,8 @@ typedef std::map<osmium::unsigned_object_id_type, WayNodesVect> Way2Nodes;
 typedef std::map<osmium::unsigned_object_id_type, WayNodesVect> AdjacencyList;
 typedef osmium::index::map::SparseMemMap<osmium::unsigned_object_id_type, int > Vertices;
 
+typedef std::map<osmium::unsigned_object_id_type, std::string> WayNames;
+
 class OSMReader : public osmium::handler::Handler
 {
 public:
@@ -78,17 +80,20 @@ public:
               AdjacencyList & palist,
               WaynodeLocations & waynode_locations,
               WayNodesMap & busWayNodesMap,
-              Way2Nodes & way2nodes ) : alist ( alist ),
+              Way2Nodes & way2nodes,
+              WayNames & way2name
+            ) : alist ( alist ),
     palist ( palist ),
     waynode_locations ( waynode_locations ),
     busWayNodesMap ( busWayNodesMap ),
-    way2nodes ( way2nodes )
+    way2nodes ( way2nodes ),
+    way2name ( way2name )
   {
 
     try
       {
 
-#ifdef DEBUG                                                       
+#ifdef DEBUG
         std::cout << "\n OSMReader is running... " << std::endl;
 #endif
 
@@ -130,12 +135,14 @@ public:
         std::set<osmium::unsigned_object_id_type> sum_vertices;
         std::map<osmium::unsigned_object_id_type, size_t>  word_map;
         int sum_edges {0};
+        std::map <int, int> node_degrees;
         for ( auto busit = begin ( alist );
               busit != end ( alist ); ++busit )
           {
 
             sum_vertices.insert ( busit->first );
             sum_edges+=busit->second.size();
+            node_degrees[busit->second.size()]++;
 
             for ( const auto &v : busit->second )
               {
@@ -143,10 +150,16 @@ public:
               }
 
           }
-        std::cout << " #citymap edges = "<< sum_edges<< std::endl;
+        std::cout << " #citymap edges = "<< sum_edges << std::endl;
         std::cout << " #citymap vertices = "<< sum_vertices.size() << std::endl;
         std::cout << " #citymap vertices (deg- >= 1) = "<< alist.size() << std::endl;
-        std::cout << " #onewayc = "<< onewayc<< std::endl;
+        std::cout << " #onewayc = "<< onewayc << std::endl;
+        std::cout << " #distribution of out degrees:" << std::endl;
+        std::cout << " #";
+        for ( const auto &i : node_degrees )
+          std::cout << "deg-=" << i.first << ":" << i.second << ", ";
+        std::cout << std::endl;
+        std::cout << " #mean of out degrees:" << ( double ) sum_edges / ( double ) alist.size() << std::endl;
 
 #endif
 
@@ -192,7 +205,7 @@ public:
     const char* way = w.tags() ["highway"];
     const char* maxspeed = w.tags() ["maxspeed"];
     double nodeDistance;
-                                                                        // std::cout<<way<<std::endl;
+                                                                       //  std::cout<<way<<std::endl;
     if(!maxspeed)
     {
     if(!strcmp (way, "primary")
@@ -201,7 +214,8 @@ public:
     || !strcmp (way, "unclassified")
     || !strcmp (way ,"road")
     || !strcmp (way, "primary_link")  
-    || !strcmp (way, "secondary_link"))
+    || !strcmp (way, "secondary_link")
+    || !strcmp (way, "tertiary_link"))
     {
       maxspeed = "90";
     }
@@ -212,13 +226,16 @@ public:
       maxspeed = "110";
     }
 
-    if(!strcmp(way, "motorway"))
+    if(!strcmp(way, "motorway")
+    || !strcmp(way, "motorway_link")
+    || !strcmp(way, "raceway"))
     {
       maxspeed = "130";
     }
 
     if(!strcmp (way, "residential")
-    || !strcmp (way, "track"))
+    || !strcmp (way, "track")
+    || !strcmp (way, "pedestrian"))
     {
       maxspeed = "50";
     }
@@ -226,7 +243,8 @@ public:
     if(!strcmp (way, "platform")
     || !strcmp (way, "service")
     || !strcmp (way, "path")
-    || !strcmp (way, "living_street"))
+    || !strcmp (way, "living_street")
+    || !strcmp (way, "proposed"))
     {
       maxspeed = "20";
     }
@@ -235,36 +253,45 @@ public:
         maxspeed = "30";
 
       nodeDistance = atoi(maxspeed) * 0.2 / 3.6;
+
+      if(strstr(maxspeed ,"mph"))
+        nodeDistance *= 1.6;
+
+      std::cout<<way<<nodeDistance<<std::endl;
     return nodeDistance;
   }
 
   void way ( osmium::Way& way )
   {
 
-    const char* highway = way.tags() ["highway"];         
-    if ( !highway )                                     
-      return;                                             
-                                                          // http://wiki.openstreetmap.org/wiki/Key:highway
-    if ( !strcmp ( highway, "footway" )                   
-         || !strcmp ( highway, "cycleway" )               
+    const char* highway = way.tags() ["highway"];
+    if ( !highway )
+      return;
+    // http://wiki.openstreetmap.org/wiki/Key:highway
+    if ( !strcmp ( highway, "footway" )
+         || !strcmp ( highway, "cycleway" )
          || !strcmp ( highway, "bridleway" )
          || !strcmp ( highway, "steps" )
-         || !strcmp ( highway, "pedestrian")
-         || !strcmp ( highway, "construction" ) )
+         || !strcmp ( highway, "path" )
+         || !strcmp ( highway, "construction" ) 
+         || !strcmp ( highway, "emergency_access_point" ) )
       return;
-
-    double dist = getNodeDistance(way);                         //inicializáljuk a sebességét az utaknak, amit egy külön függvényben
-  //  std::cout<<speed;                                   //írtunk meg,hogy melyik úthoz milyen sebesség tartozik.
-
+    double dist = getNodeDistance(way);
     onewayf = false;
-    const char* oneway = way.tags() ["oneway"];           
+    const char* oneway = way.tags() ["oneway"];
     if ( oneway )
       {
-        onewayf = true;                                   
-        ++onewayc;                                        //oneway counter
+        onewayf = true;
+        ++onewayc;
       }
 
     ++nOSM_ways;
+
+    const char* wayname = way.tags() ["name"];
+    if ( wayname )
+      way2name[way.id()] = wayname;
+    else
+      way2name[way.id()] = "UNS "+std::to_string ( way.id() );
 
     double way_length = osmium::geom::haversine::distance ( way.nodes() );
     sum_highhway_length += way_length;
@@ -273,44 +300,44 @@ public:
     int unique_node_counter {0};
     osmium::Location from_loc;
 
-    osmium::unsigned_object_id_type vertex_old;     
+    osmium::unsigned_object_id_type vertex_old;
 
     for ( const osmium::NodeRef& nr : way.nodes() )
       {
 
-        osmium::unsigned_object_id_type vertex = nr.positive_ref(); //Get absolute value of the reference ID of this NodeRef.   
+        osmium::unsigned_object_id_type vertex = nr.positive_ref();
 
-        way2nodes[way.id()].push_back ( vertex );     //Get ID of this object with way.id() and push the actual vertex to their vector
+        way2nodes[way.id()].push_back ( vertex );
 
         try
           {
 
-            vert.get ( vertex );                //Retrieve value by id. Does not check for overflow or empty fields. 
+            vert.get ( vertex );
 
           }
         catch ( std::exception& e )
           {
 
-            vert.set ( vertex, 1 );         //Set the field with id to value. 
+            vert.set ( vertex, 1 );
 
             ++unique_node_counter;
 
             //waynode_locations.set ( vertex, nr.location() );
-            waynode_locations[vertex] = nr.location();    //Get location of this NodeRef. 
+            waynode_locations[vertex] = nr.location();
 
           }
 
-        if ( node_counter > 0 )     
+        if ( node_counter > 0 )
           {
 
-            if ( !edge ( vertex_old, vertex ) )   
+            if ( !edge ( vertex_old, vertex ) )
               {
 
                 alist[vertex_old].push_back ( vertex );
 
                 double edge_length = distance ( vertex_old, vertex );
 
-                palist[vertex_old].push_back ( edge_length / dist );
+                palist[vertex_old].push_back ( edge_length / dist);
 
                 if ( edge_length>max_edge_length )
                   max_edge_length = edge_length;
@@ -331,7 +358,7 @@ public:
                 if ( !edge ( vertex, vertex_old ) )
                   {
 
-                    alist[vertex].push_back ( vertex_old );         //
+                    alist[vertex].push_back ( vertex_old );
 
                     double edge_length = distance ( vertex_old, vertex );
 
@@ -427,12 +454,12 @@ private:
   inline double distance ( osmium::unsigned_object_id_type vertexa, osmium::unsigned_object_id_type vertexb )
   {
 
-    osmium::Location A = locations.get ( vertexa );     //Retrieve value by id.
-    osmium::Location B = locations.get ( vertexb );     //Retrieve value by id.
+    osmium::Location A = locations.get ( vertexa );
+    osmium::Location B = locations.get ( vertexb );
     osmium::geom::Coordinates ac {A};
     osmium::geom::Coordinates ab {B};
 
-    return osmium::geom::haversine::distance ( ac, ab );    //Calculate distance in meters between two sets of coordinates. 
+    return osmium::geom::haversine::distance ( ac, ab );
   }
 
   std::size_t m_estimator {0u};
@@ -440,6 +467,7 @@ private:
   WaynodeLocations & waynode_locations;
   WayNodesMap & busWayNodesMap;
   Way2Nodes & way2nodes;
+  WayNames & way2name;
 
 };
 

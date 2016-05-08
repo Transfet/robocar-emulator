@@ -53,6 +53,7 @@ int main ( int argc, char* argv[] )
   ( "minutes", boost::program_options::value<int>(), "how long does the traffic simulation run for?" )
   ( "catchdist", boost::program_options::value<double>(), "the catch distance of cop cars" )
   ( "traffict", boost::program_options::value< std::string > (), "traffic type = NORMAL|ANTS|ANTS_RND|ANTS_RERND|ANTS_MRERND" )
+ // ( "delay", boost::program_options::value< int > (), "m_delay" )
   ;
   
   boost::program_options::variables_map vm;
@@ -89,7 +90,7 @@ int main ( int argc, char* argv[] )
   else
     port.assign ( "10007" );
 
-  int nrcars {10000};
+  int nrcars {100};
   if ( vm.count ( "nrcars" ) )
     nrcars = vm["nrcars"].as < int > ();
 
@@ -106,7 +107,11 @@ int main ( int argc, char* argv[] )
     traffict.assign ( vm["traffict"].as < std::string > () );
   else
     traffict.assign ( "NORMAL" );
-  
+/*
+  int delay{200};
+  if ( vm.count ( "delay" ) )
+    delay = vm["delay"].as < int > ();
+  */
   justine::robocar::TrafficType type;
   if(traffict == "ANTS_RND")
     type = justine::robocar::TrafficType::ANT_RND;
